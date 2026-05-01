@@ -1,122 +1,83 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useReducer, useCallback } from 'react';
+import { NetworkMap }      from './components/NetworkMap.jsx';
+import { AttackTimeline }  from './components/AttackTimeline.jsx';
+import { LiveTerminal }    from './components/LiveTerminal.jsx';
+import { PromptInput }     from './components/PromptInput.jsx';
+import { useSessionStream } from './hooks/useSessionStream.js';
 
-function App() {
-  const [count, setCount] = useState(0)
+const INITIAL_STATE = {
+  sessions:        [],
+  activeSessionId: null,
+  isRunning:       false,
+};
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function reducer(state, action) {
+  switch (action.type) {
+    case 'START_SESSION':
+      return {
+        ...state,
+        activeSessionId: action.sessionId,
+        isRunning: true,
+        sessions: [
+          { id: action.sessionId, prompt: action.prompt, createdAt: new Date().toISOString() },
+          ...state.sessions,
+        ],
+      };
+    case 'SESSION_DONE':
+      return { ...state, isRunning: false };
+    default:
+      return state;
+  }
 }
 
-export default App
+export default function App() {
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const { activeSessionId, isRunning } = state;
+  const { events } = useSessionStream(activeSessionId);
+
+  const isDone = events.some((e) => e.type === 'done' || e.type === 'error');
+  if (isRunning && isDone) dispatch({ type: 'SESSION_DONE' });
+
+  const isToolActive = events.some(
+    (e) => e.type === 'tool_call' &&
+      !events.find((r) => r.type === 'tool_result' && r.toolUseId === e.toolUseId),
+  );
+
+  const handlePromptSubmit = useCallback(async (prompt) => {
+    try {
+      const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { sessionId } = await res.json();
+      dispatch({ type: 'START_SESSION', sessionId, prompt });
+    } catch (err) {
+      console.error('[App] Failed to start session:', err);
+    }
+  }, []);
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#d1d5db', fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #1f2937', background: '#111' }}>
+        <span style={{ color: '#00ff41', fontSize: '14px', fontWeight: 'bold' }}>
+          AI PenTest Demo Dashboard
+        </span>
+        <span style={{ fontSize: '11px', color: isRunning ? '#f97316' : '#6b7280' }}>
+          {isRunning ? 'Running...' : activeSessionId ? 'Idle' : 'No active session'}
+        </span>
+      </header>
+
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', padding: '8px', minHeight: 0, height: 'calc(100vh - 110px)' }}>
+        <NetworkMap isActive={isToolActive} />
+        <AttackTimeline events={events} />
+        <LiveTerminal events={events} />
+      </div>
+
+      <div style={{ padding: '0 8px 8px' }}>
+        <PromptInput onSubmit={handlePromptSubmit} disabled={isRunning} />
+      </div>
+    </div>
+  );
+}
