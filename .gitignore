@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# SSH keys
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Logs and session data
+logs/
+*.sqlite
+*.db
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
