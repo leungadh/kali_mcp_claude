@@ -54,7 +54,8 @@ app.post('/api/session', async (req, res) => {
       for (const client of (sseClients.get(sessionId) ?? [])) {
         client.end();
       }
-      sseClients.get(sessionId)?.clear();
+      sseClients.delete(sessionId);
+      sessionDone.delete(sessionId);
     }
   })();
 

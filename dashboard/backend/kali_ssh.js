@@ -58,7 +58,7 @@ export class KaliSSH {
     });
   }
 
-  upload(localPath, remotePath) {
+  upload(localPath, remotePath, timeout = 60_000) {
     return new Promise((resolve, reject) => {
       const client = this._clientFactory();
       let settled = false;
@@ -69,11 +69,17 @@ export class KaliSSH {
         fn(val);
       };
 
+      const timer = setTimeout(
+        () => settle(reject, new Error(`SFTP upload timed out after ${timeout}ms: ${localPath}`)),
+        timeout,
+      );
+
       client
         .on('ready', () => {
           client.sftp((err, sftp) => {
-            if (err) return settle(reject, err);
+            if (err) { clearTimeout(timer); return settle(reject, err); }
             sftp.fastPut(localPath, remotePath, (err2) => {
+              clearTimeout(timer);
               sftp.end();
               if (err2) return settle(reject, err2);
               settle(
@@ -83,7 +89,7 @@ export class KaliSSH {
             });
           });
         })
-        .on('error', (err) => settle(reject, err))
+        .on('error', (err) => { clearTimeout(timer); settle(reject, err); })
         .connect({
           host:         this.config.host,
           port:         22,

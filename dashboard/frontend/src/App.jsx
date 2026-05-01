@@ -1,4 +1,4 @@
-import { useReducer, useCallback } from 'react';
+import { useReducer, useCallback, useEffect } from 'react';
 import { NetworkMap }      from './components/NetworkMap.jsx';
 import { AttackTimeline }  from './components/AttackTimeline.jsx';
 import { LiveTerminal }    from './components/LiveTerminal.jsx';
@@ -36,7 +36,9 @@ export default function App() {
   const { events } = useSessionStream(activeSessionId);
 
   const isDone = events.some((e) => e.type === 'done' || e.type === 'error');
-  if (isRunning && isDone) dispatch({ type: 'SESSION_DONE' });
+  useEffect(() => {
+    if (isRunning && isDone) dispatch({ type: 'SESSION_DONE' });
+  }, [isRunning, isDone]);
 
   const isToolActive = events.some(
     (e) => e.type === 'tool_call' &&
